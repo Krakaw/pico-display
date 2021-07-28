@@ -301,10 +301,21 @@ current_row = 0
 row_height = 12
 line_offset = 2
 timeDelta = 0
+nextMeetingSecs = 0
 
 
 def timeNow():
     return utime.localtime(utime.time() + timeDelta)
+
+
+def timeNowUnix():
+    return utime.mktime(timeNow())
+
+
+def currentSecondsFromMidnight():
+    midnightDateTime = timeNow()
+    return utime.mktime(timeNow()) - utime.mktime(
+        (midnightDateTime[0], midnightDateTime[1], midnightDateTime[2], 0, 0, 0, 0, 0))
 
 
 def getHoursMins():
@@ -317,14 +328,16 @@ def write_line(text):
     line_top = line_offset + (current_row * row_height)
     epd.text(text, 0, line_top, 0x00)
 
+
 def kbhit():
-    spoll=uselect.poll()        # Set up an input polling object.
-    spoll.register(sys.stdin,uselect.POLLIN)    # Register polling object.
+    spoll = uselect.poll()  # Set up an input polling object.
+    spoll.register(sys.stdin, uselect.POLLIN)  # Register polling object.
 
     kbch = sys.stdin.readline() if spoll.poll(0) else None
 
     spoll.unregister(sys.stdin)
-    return(kbch)
+    return (kbch)
+
 
 if __name__ == '__main__':
     epd = EPD_2in13()
@@ -335,7 +348,13 @@ if __name__ == '__main__':
         data = kbhit()
         if data is None:
             epd.init(epd.part_update)
-            epd.fill_rect(82, 242, 46, 10, 0xff)
+            now = currentSecondsFromMidnight()
+            minutesTillMeeting = int(min((nextMeetingSecs - now) / 60, 60))
+            percent = minutesTillMeeting / 60
+            maxWidth = 82
+            barWidth = int(maxWidth * percent)
+            epd.fill_rect(0, 242, 128, 10, 0xff)
+            epd.fill_rect(0, 242, barWidth, 10, 0x00)
             epd.text(getHoursMins(), 82, 242, 0x00)
             epd.displayPartial(epd.buffer)
             utime.sleep(1)
@@ -344,22 +363,27 @@ if __name__ == '__main__':
             lines = ujson.loads(data)
             if 'timeSync' in lines:
                 parts = tuple(map(int, (lines["timeSync"] + " 0 0").split(' ')))
-                synchronisedTime = utime.mktime(tuple(parts))
+                synchronisedTime = utime.mktime(parts)
                 timeDelta = synchronisedTime - int(utime.time())
                 dateTime = timeNow()
                 print(
-                    "Syncing clock {:02d}-{:02d}-{:04d} {:02d}:{:02d}:{:02d}".format(dateTime[2], dateTime[1], dateTime[0],
+                    "Syncing clock {:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(dateTime[0], dateTime[1],
+                                                                                     dateTime[2],
                                                                                      dateTime[3],
                                                                                      dateTime[4], dateTime[5]))
 
             else:
                 current_row = 0
-                for lineObj in lines:
+                for idx, lineObj in enumerate(lines):
+                    if idx == 0:
+                        nextMeetingSecs = int(lineObj["startSecsFromMidnight"])
+
                     draw_line = False
                     line = lineObj["summary"]
                     if lineObj["startingSoon"]:
                         # Time goes on it's own line and it has an underline
                         write_line("     " + lineObj["startTime"] + "     ")
+                        current_row += 1
                         draw_line = True
                     else:
                         line = lineObj["startTime"] + " " + line
@@ -374,8 +398,7 @@ if __name__ == '__main__':
                 epd.Clear(0xff)
 
                 epd.display(epd.buffer)
-
-
+                epd.sleep()
     # epd.text("Waveshare", 10, 0, 0x00)
     # epd.text("ePaper-2.13", 0, 30, 0x00)
     # epd.text("Raspberry Pico", 0, 50, 0x00)
