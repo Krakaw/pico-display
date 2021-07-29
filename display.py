@@ -143,10 +143,8 @@ class EPD_2in13(framebuf.FrameBuffer):
         self.digital_write(self.cs_pin, 1)
 
     def ReadBusy(self):
-        print('busy')
         while (self.digital_read(self.busy_pin) == 1):  # 0: idle, 1: busy
             self.delay_ms(10)
-        print('busy release')
 
     def TurnOnDisplay(self):
         self.send_command(0x22)
@@ -422,35 +420,3 @@ if __name__ == '__main__':
                 epd.Clear(0xff)
                 epd.display(epd.buffer)
                 epd.sleep()
-
-    # epd.text("Waveshare", 10, 0, 0x00)
-    # epd.text("ePaper-2.13", 0, 30, 0x00)
-    # epd.text("Raspberry Pico", 0, 50, 0x00)
-    # epd.text("Hello World", 0, 70, 0x00)
-    # epd.display(epd.buffer)
-    # epd.delay_ms(2000)
-    #
-    # epd.vline(10, 90, 60, 0x00)
-    # epd.vline(90, 90, 60, 0x00)
-    # epd.hline(10, 90, 80, 0x00)
-    # epd.hline(10, 150, 80, 0x00)
-    # epd.line(10, 90, 90, 150, 0x00)
-    # epd.line(90, 90, 10, 150, 0x00)
-    # epd.display(epd.buffer)
-    # epd.delay_ms(2000)
-    #
-    # epd.rect(10, 180, 50, 40, 0x00)
-    # epd.fill_rect(60, 180, 50, 40, 0x00)
-    # epd.displayPartBaseImage(epd.buffer)
-    # epd.delay_ms(2000)
-    #
-    # epd.init(epd.part_update)
-    # for i in range(0, 10):
-    #     epd.fill_rect(40, 230, 40, 10, 0xff)
-    #     epd.text(str(i), 60, 230, 0x00)
-    #     epd.displayPartial(epd.buffer)
-    #
-    # epd.init(epd.full_update)
-    # epd.Clear(0xff)
-    # epd.delay_ms(2000)
-    # epd.sleep()
