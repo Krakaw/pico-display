@@ -33,6 +33,7 @@ import utime
 import sys
 import ujson
 import uselect
+import math
 
 lut_full_update = [
     0x80, 0x60, 0x40, 0x00, 0x00, 0x00, 0x00,  # LUT0: BB:     VS 0 ~7
@@ -297,83 +298,107 @@ class EPD_2in13(framebuf.FrameBuffer):
         self.module_exit()
 
 
-current_row = 0
-row_height = 12
-line_offset = 2
-timeDelta = 0
+class RowWriter:
+    def __init__(self, epd, start_top=2, row_height=12, bottom_margin=2):
+        self.last_top = start_top
+        self.current_row = 0
+        self.bottom_margin = bottom_margin
+        self.row_height = row_height
+        self.epd = epd
+
+    def write_line(self, text, underline=False, additional_bottom_margin=0, colour=0x00, center=False):
+        line_top = self.last_top
+        text = self.pad(text) if center else text
+        self.epd.text(text, 0, line_top, colour)
+        self.last_top = self.last_top + self.row_height
+        if underline:
+            self.draw_horizontal_line(128)
+        self.last_top = self.last_top + self.bottom_margin + additional_bottom_margin
+
+    def pad(self, text):
+        if len(text) < 15:
+            pre_pad = math.floor((15 - len(text)) / 2)
+            post_pad = 15 - len(text) - pre_pad
+            return " " * pre_pad + text + " " * post_pad
+        return text
+
+    def draw_horizontal_line(self, width=128):
+        self.epd.hline(0, self.last_top, width, 0x00)
+        self.last_top += 1
+
+
+class Time:
+    def __init__(self, time_delta=0):
+        self.time_delta = time_delta
+
+    def now(self):
+        return utime.localtime(utime.time() + self.time_delta)
+
+    def now_unix(self):
+        return utime.mktime(self.now())
+
+    def secs_from_midnight(self):
+        midnight_date_time = self.now()
+        return utime.mktime(self.now()) - utime.mktime(
+            (midnight_date_time[0], midnight_date_time[1], midnight_date_time[2], 0, 0, 0, 0, 0))
+
+    def hours_mins(self):
+        date_time_now = self.now()
+        return "{:02d}:{:02d}".format(date_time_now[3], date_time_now[4])
+
+    def set_delta(self, time_string):
+        parts = tuple(map(int, time_string.split(' ')))
+        synchronised_time = utime.mktime(parts)
+        self.time_delta = synchronised_time - int(utime.time())
+
+    def print_time(self, prefix=""):
+        date_time_now = self.now()
+        print(prefix + "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(date_time_now[0], date_time_now[1],
+                                                                          date_time_now[2],
+                                                                          date_time_now[3],
+                                                                          date_time_now[4], date_time_now[5]))
+
+
 nextMeetingSecs = 0
 
 
-def timeNow():
-    return utime.localtime(utime.time() + timeDelta)
-
-
-def timeNowUnix():
-    return utime.mktime(timeNow())
-
-
-def currentSecondsFromMidnight():
-    midnightDateTime = timeNow()
-    return utime.mktime(timeNow()) - utime.mktime(
-        (midnightDateTime[0], midnightDateTime[1], midnightDateTime[2], 0, 0, 0, 0, 0))
-
-
-def getHoursMins():
-    dateTime = timeNow()
-    return "{:02d}:{:02d}".format(dateTime[3], dateTime[4])
-
-
-def write_line(text):
-    global current_row, epd
-    line_top = line_offset + (current_row * row_height)
-    epd.text(text, 0, line_top, 0x00)
-
-
-def kbhit():
+def serial_input_poll():
     spoll = uselect.poll()  # Set up an input polling object.
     spoll.register(sys.stdin, uselect.POLLIN)  # Register polling object.
-
     kbch = sys.stdin.readline() if spoll.poll(0) else None
-
     spoll.unregister(sys.stdin)
-    return (kbch)
+    return kbch
 
 
 if __name__ == '__main__':
     epd = EPD_2in13()
     epd.Clear(0xff)
-
     epd.fill(0xff)
+    local_time = Time()
     while True:
-        data = kbhit()
+        data = serial_input_poll()
         if data is None:
             epd.init(epd.part_update)
-            now = currentSecondsFromMidnight()
+            now = local_time.secs_from_midnight()
             minutesTillMeeting = int(min((nextMeetingSecs - now) / 60, 60))
             percent = minutesTillMeeting / 60
             maxWidth = 82
             barWidth = int(maxWidth * percent)
             epd.fill_rect(0, 242, 128, 10, 0xff)
             epd.fill_rect(0, 242, barWidth, 10, 0x00)
-            epd.text(getHoursMins(), 82, 242, 0x00)
+            epd.text(local_time.hours_mins(), 82, 242, 0x00)
             epd.displayPartial(epd.buffer)
             utime.sleep(1)
         else:
             epd.fill(0xff)
             lines = ujson.loads(data)
             if 'timeSync' in lines:
-                parts = tuple(map(int, (lines["timeSync"] + " 0 0").split(' ')))
-                synchronisedTime = utime.mktime(parts)
-                timeDelta = synchronisedTime - int(utime.time())
-                dateTime = timeNow()
-                print(
-                    "Syncing clock {:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(dateTime[0], dateTime[1],
-                                                                                     dateTime[2],
-                                                                                     dateTime[3],
-                                                                                     dateTime[4], dateTime[5]))
-
+                local_time.set_delta(lines["timeSync"] + " 0 0")
+                local_time.print_time("Syncing clock ")
             else:
-                current_row = 0
+                last_top = 0
+                row_writer = RowWriter(epd, bottom_margin=0)
+
                 for idx, lineObj in enumerate(lines):
                     if idx == 0:
                         nextMeetingSecs = int(lineObj["startSecsFromMidnight"])
@@ -382,23 +407,22 @@ if __name__ == '__main__':
                     line = lineObj["summary"]
                     if lineObj["startingSoon"]:
                         # Time goes on it's own line and it has an underline
-                        write_line("     " + lineObj["startTime"] + "     ")
-                        current_row += 1
+                        row_writer.write_line(lineObj["startTime"], center=True)
                         draw_line = True
                     else:
                         line = lineObj["startTime"] + " " + line
 
                     while len(line) > 0:
                         line = line.strip()
-                        write_line(line[:15])
-                        current_row = current_row + 1
+                        is_last_line = len(line) <= 15
+                        add_bottom_margin = 4 if is_last_line else 0
+                        row_writer.write_line(line[:15], additional_bottom_margin=add_bottom_margin,
+                                              underline=is_last_line and draw_line)
                         line = line[15:]
-                    if draw_line:
-                        epd.hline(0, current_row * row_height, 128, 0x00)
                 epd.Clear(0xff)
-
                 epd.display(epd.buffer)
                 epd.sleep()
+
     # epd.text("Waveshare", 10, 0, 0x00)
     # epd.text("ePaper-2.13", 0, 30, 0x00)
     # epd.text("Raspberry Pico", 0, 50, 0x00)
