@@ -368,22 +368,33 @@ def serial_input_poll():
     return kbch
 
 
-if __name__ == '__main__':
+def clear(passes=10):
+    for i in range(passes):
+        epd = EPD_2in13()
+        epd.Clear(0xff)
+        epd.fill(0xff)
+        epd.display(epd.buffer)
+        utime.sleep(1)
+
+
+def start():
+    global nextMeetingSecs
     epd = EPD_2in13()
     epd.Clear(0xff)
     epd.fill(0xff)
     local_time = Time()
+
     while True:
         data = serial_input_poll()
         if data is None:
             epd.init(epd.part_update)
             now = local_time.secs_from_midnight()
-            minutesTillMeeting = int(min((nextMeetingSecs - now) / 60, 60))
-            percent = minutesTillMeeting / 60
-            maxWidth = 82
-            barWidth = int(maxWidth * percent)
+            minutes_till_meeting = int(min((nextMeetingSecs - now) / 60, 60))
+            percent = minutes_till_meeting / 60
+            max_width = 82
+            bar_width = int(max_width * percent)
             epd.fill_rect(0, 242, 128, 10, 0xff)
-            epd.fill_rect(0, 242, barWidth, 10, 0x00)
+            epd.fill_rect(0, 242, bar_width, 10, 0x00)
             epd.text(local_time.hours_mins(), 82, 242, 0x00)
             epd.displayPartial(epd.buffer)
             utime.sleep(1)
@@ -420,3 +431,9 @@ if __name__ == '__main__':
                 epd.Clear(0xff)
                 epd.display(epd.buffer)
                 epd.sleep()
+
+
+if __name__ == '__main__':
+    start()
+
+
