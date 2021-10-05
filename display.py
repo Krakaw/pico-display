@@ -374,6 +374,10 @@ def clear(passes=10):
         epd.Clear(0xff)
         epd.fill(0xff)
         epd.display(epd.buffer)
+        epd.Clear(0x00)
+        epd.fill(0x00)
+        epd.display(epd.buffer)
+
         utime.sleep(1)
 
 
@@ -404,11 +408,12 @@ def start():
             if 'timeSync' in lines:
                 local_time.set_delta(lines["timeSync"] + " 0 0")
                 local_time.print_time("Syncing clock ")
-            else:
+
+            if 'dates' in lines:
                 last_top = 0
                 row_writer = RowWriter(epd, bottom_margin=0)
 
-                for idx, lineObj in enumerate(lines):
+                for idx, lineObj in enumerate(lines["dates"]):
                     if idx == 0:
                         nextMeetingSecs = int(lineObj["startSecsFromMidnight"])
 
@@ -434,6 +439,5 @@ def start():
 
 
 if __name__ == '__main__':
+    clear(10)
     start()
-
-
