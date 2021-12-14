@@ -365,7 +365,9 @@ def serial_input_poll():
     spoll.register(sys.stdin, uselect.POLLIN)  # Register polling object.
     kbch = sys.stdin.readline() if spoll.poll(0) else None
     spoll.unregister(sys.stdin)
-    return kbch
+    if kbch is None:
+        return kbch
+    return kbch.strip()
 
 
 def clear(passes=10):
